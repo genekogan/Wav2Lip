@@ -275,7 +275,7 @@ def main():
 
 	out.release()
 
-	command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(args.audio, args.temp_video_file, args.outfile)
+	command = 'ffmpeg -y -i {} -i {} -c:v libx264 -pix_fmt yuv420p {}'.format(args.audio, args.temp_video_file, args.outfile)
 	subprocess.call(command, shell=platform.system() != 'Windows')
 
 if __name__ == '__main__':
