@@ -218,10 +218,11 @@ def main():
 
 	if not args.audio.endswith('.wav'):
 		print('Extracting raw audio...')
-		command = 'ffmpeg -y -i {} -strict -2 {}'.format(args.audio, 'temp/temp.wav')
+		new_audio_file = f'{os.path.splitext(args.audio)[0]}.wav'
+		command = 'ffmpeg -y -i {} -strict -2 {}'.format(args.audio, new_audio_file)
 
 		subprocess.call(command, shell=True)
-		args.audio = 'temp/temp.wav'
+		args.audio = new_audio_file
 
 	wav = audio.load_wav(args.audio, 16000)
 	mel = audio.melspectrogram(wav)
