@@ -1,5 +1,7 @@
+import os
 from os import listdir, path
 import numpy as np
+from PIL import Image
 import scipy, cv2, os, sys, argparse, audio
 import json, subprocess, random, string
 from tqdm import tqdm
@@ -13,6 +15,10 @@ parser = argparse.ArgumentParser(description='Inference code to lip-sync videos 
 parser.add_argument('--checkpoint_path', type=str, 
 					help='Name of saved checkpoint to load weights from', required=True)
 
+parser.add_argument('--output', type=str, 
+					choices=['video', 'audiovideo', 'frames'],
+					help='Output temp video only (no audio), temp and final (with audio), or frames only', default='audiovideo')
+
 parser.add_argument('--face', type=str, 
 					help='Filepath of video/image that contains faces to use', required=True)
 parser.add_argument('--audio', type=str, 
@@ -21,6 +27,8 @@ parser.add_argument('--outfile', type=str, help='Video path to save result. See 
 								default='results/result_voice.mp4')
 parser.add_argument('--temp_video_file', type=str, help='Path to save audio-less result. See default for an e.g.', 
 								default='temp/result.avi')
+parser.add_argument('--temp_frames_dir', type=str, help='Path to save individual frames. output mode must be frames. See default for an e.g.', 
+								default='temp/frames')
 
 parser.add_argument('--static', type=bool, 
 					help='If True, then use only first video frame for inference', default=False)
@@ -249,15 +257,23 @@ def main():
 	batch_size = args.wav2lip_batch_size
 	gen = datagen(full_frames.copy(), mel_chunks)
 
+	if args.output == 'frames':
+		os.makedirs(args.temp_frames_dir, exist_ok=True)
+	
+	frame_idx = 1
 	for i, (img_batch, mel_batch, frames, coords) in enumerate(tqdm(gen, 
 											total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
+
 		if i == 0:
 			model = load_model(args.checkpoint_path)
 			print ("Model loaded")
 
 			frame_h, frame_w = full_frames[0].shape[:-1]
-			out = cv2.VideoWriter(args.temp_video_file, 
-									cv2.VideoWriter_fourcc(*'DIVX'), fps, (frame_w, frame_h))
+			if args.output in ['video', 'audiovideo']:
+				out = cv2.VideoWriter(args.temp_video_file, 
+										cv2.VideoWriter_fourcc(*'DIVX'), 
+										fps, 
+										(frame_w, frame_h))
 
 		img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(device)
 		mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(device)
@@ -272,12 +288,20 @@ def main():
 			p = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
 
 			f[y1:y2, x1:x2] = p
-			out.write(f)
+			if args.output in ['video', 'audiovideo']:
+				out.write(f)
+			elif args.output == 'frames':
+				f_RGB = cv2.cvtColor(f, cv2.COLOR_BGR2RGB)
+				framename = os.path.join(args.temp_frames_dir, 'f%05d.png' % frame_idx)
+				Image.fromarray(f_RGB).save(framename)
+				frame_idx += 1
+	
+	if args.output in ['video', 'audiovideo']:
+		out.release()
 
-	out.release()
-
-	command = 'ffmpeg -y -i {} -i {} -c:v libx264 -pix_fmt yuv420p {}'.format(args.audio, args.temp_video_file, args.outfile)
-	subprocess.call(command, shell=platform.system() != 'Windows')
+	if args.output == 'audiovideo':
+		command = 'ffmpeg -y -i {} -i {} -c:v libx264 -pix_fmt yuv420p {}'.format(args.audio, args.temp_video_file, args.outfile)
+		subprocess.call(command, shell=platform.system() != 'Windows')
 
 if __name__ == '__main__':
 	main()
